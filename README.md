@@ -58,6 +58,10 @@ core/storage.py     SQLite schema and per-tick inserts
 * **Every tick commits.** At 2 Hz that is two `fsync`-backed commits a second, which is
   fine for a foreground session and wasteful for a long-running daemon.
 
+## License
+
+MIT. See [LICENSE](LICENSE).
+
 ## Author
 
-**Abir Deol**
+**Abir Deol** · [abirdeol.tech](https://abirdeol.tech)
