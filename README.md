@@ -1,8 +1,8 @@
 # thermal_monitor
 
-A terminal telemetry daemon. It samples CPU load, package temperature, memory use and
-GPU clock state twice a second, renders them as a live-updating table, and writes every
-tick to a local SQLite database so a run can be reviewed after the fact.
+A terminal telemetry daemon. It samples CPU load, package temperature and memory use twice
+a second, renders them as a live-updating table, and writes every tick to a local SQLite
+database so a run can be reviewed after the fact.
 
 ## How it works
 
@@ -10,17 +10,23 @@ tick to a local SQLite database so a run can be reviewed after the fact.
   once and threads that reading through the derived values. Sampling per-sensor meant
   three separate blocking `cpu_percent` calls per frame and three different load figures
   inside a single row.
+* **Load covers the whole run.** Each tick reports CPU load since the previous tick
+  rather than blocking for a 0.1 s poll, which measured one sixth of every loop and
+  slowed it to 1.7 Hz.
 * **Thermal readings with a fallback.** Package temperature is read from `coretemp`
-  (Intel) or `k10temp` (AMD) via `psutil.sensors_temperatures`. Those thermal zones are
-  not exposed on Windows or inside WSL, so when the read fails the daemon models a curve
-  from load instead of reporting nothing.
+  (Intel), `k10temp` or `zenpower` (AMD), or `cpu_thermal` (ARM) via
+  `psutil.sensors_temperatures`. Those thermal zones are not exposed on Windows or inside
+  WSL, so when the read fails the daemon models a curve from load instead of reporting
+  nothing, labels the row `(est.)`, and stores the tick with `temp_measured = 0`.
 * **Sampling, logging and rendering are separate.** The table builder is pure. Only the
   loop writes rows, so a repaint never inserts a duplicate tick.
 * **Persistent history.** Each tick lands in the `system_metrics` table of
-  `thermal_grid.db` with a timestamp, so you can query a session afterwards:
+  `thermal_grid.db`, next to `main.py` wherever you start it from, so you can query a
+  session afterwards:
 
   ```sql
-  SELECT MAX(cpu_temp), AVG(cpu_usage) FROM system_metrics WHERE timestamp > '2026-08-30';
+  SELECT MAX(cpu_temp), AVG(cpu_usage) FROM system_metrics
+  WHERE timestamp > '2026-08-30' AND temp_measured = 1;
   ```
 
 ## Thresholds
@@ -53,8 +59,9 @@ core/storage.py     SQLite schema and per-tick inserts
 * **VRAM clock is modelled, not measured.** `get_vram_clock_sim` steps through the three
   clock states a card uses, keyed off system activity. Reading the real value needs
   PyNVML (NVIDIA) or PyAMDGPUInfo (AMD).
-* **The temperature fallback is an estimate.** When `sensors_temperatures` is
-  unavailable the number shown is derived from load, not measured from the die.
+* **The temperature fallback is an estimate.** When no thermal driver is available the
+  number shown is derived from load, not measured from the die. It is labelled as such on
+  screen and in the database.
 * **Every tick commits.** At 2 Hz that is two `fsync`-backed commits a second, which is
   fine for a foreground session and wasteful for a long-running daemon.
 

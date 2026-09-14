@@ -1,3 +1,4 @@
+import os
 import time
 from rich.console import Console
 from rich.table import Table
@@ -14,8 +15,12 @@ custom_theme = Theme({
     "stable": "dim green"
 })
 
+# Next to this script rather than in the working directory, so starting the daemon from
+# somewhere else appends to the same history instead of quietly starting a new one.
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "thermal_grid.db")
+
 console = Console(theme=custom_theme)
-db = TelemetryDB()
+db = TelemetryDB(DB_PATH)
 sensors = HardwareSensors()
 
 TEMP_LIMIT = 65.0
@@ -36,10 +41,14 @@ def render_dashboard(reading: dict) -> Table:
     table.add_column("Current Value", justify="right", style="bold")
     table.add_column("Status", justify="center")
 
+    # Estimates are labelled where they are shown: the fallback temperature is derived from
+    # load and the VRAM clock is modelled, and neither should read as a measurement.
+    temp_label = "Package Temp" if reading["temp_measured"] else "Package Temp (est.)"
+
     table.add_row("CPU Load", f"[{cpu_style}]{cpu}%[/{cpu_style}]", "🟢" if cpu < LOAD_LIMIT else "🔴")
-    table.add_row("Package Temp", f"[{temp_style}]{temp}°C[/{temp_style}]", "🟢" if temp < TEMP_LIMIT else "🔴")
+    table.add_row(temp_label, f"[{temp_style}]{temp}°C[/{temp_style}]", "🟢" if temp < TEMP_LIMIT else "🔴")
     table.add_row("RAM Usage", f"[metric]{ram}%[/metric]", "🟢")
-    table.add_row("VRAM Clock", f"[dim magenta]{vram} MHz[/dim magenta]", "🔵")
+    table.add_row("VRAM Clock (modelled)", f"[dim magenta]{vram} MHz[/dim magenta]", "🔵")
 
     return table
 
@@ -62,7 +71,7 @@ def main():
                 live.update(render_dashboard(reading))
                 time.sleep(0.5)
     except KeyboardInterrupt:
-        console.print("\n[dim]Telemetry run completed. Data saved to thermal_grid.db.[/dim]\n")
+        console.print(f"\n[dim]Telemetry run completed. Data saved to {DB_PATH}.[/dim]\n")
     finally:
         db.close()
 

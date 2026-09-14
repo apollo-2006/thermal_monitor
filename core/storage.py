@@ -17,18 +17,25 @@ class TelemetryDB:
                 cpu_usage REAL,
                 cpu_temp REAL,
                 ram_usage REAL,
-                vram_clock_sim REAL
+                vram_clock_sim REAL,
+                temp_measured INTEGER
             )
         ''')
+        # Databases written before temp_measured existed get the column added, and their
+        # old rows read NULL: unknown, rather than claimed as either measured or estimated.
+        columns = {row[1] for row in self.cursor.execute("PRAGMA table_info(system_metrics)")}
+        if "temp_measured" not in columns:
+            self.cursor.execute("ALTER TABLE system_metrics ADD COLUMN temp_measured INTEGER")
         self.conn.commit()
 
     def log_metrics(self, reading: dict):
         """Inserts one telemetry tick, as produced by HardwareSensors.sample()."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.cursor.execute('''
-            INSERT INTO system_metrics (timestamp, cpu_usage, cpu_temp, ram_usage, vram_clock_sim)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (timestamp, reading["cpu"], reading["temp"], reading["ram"], reading["vram"]))
+            INSERT INTO system_metrics (timestamp, cpu_usage, cpu_temp, ram_usage, vram_clock_sim, temp_measured)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (timestamp, reading["cpu"], reading["temp"], reading["ram"], reading["vram"],
+              int(reading["temp_measured"])))
         self.conn.commit()
 
     def close(self):
